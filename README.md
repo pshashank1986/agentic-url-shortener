@@ -9,7 +9,7 @@ The URL API is the sample application. The workflow is a CLI that can target a r
 
 ## Interview pitch
 
-> I built a Java 17 prototype with a URL-shortening API and a governed SDLC workflow. The workflow takes a requirement and a repository path, uses an OpenAI-compatible model to produce a requirement interpretation, impact analysis, design, task plan, and concrete code proposal. A human must approve the plan before the proposal is applied to a separate working copy. The workflow runs the repositoryâ€™s supported tests and allows up to two repair attempts based on actual failures. After a passing run, a second approval marks the result ready for review. The original source repository remains unchanged, and the prototype does not commit, push, deploy, or promote a release.
+> I built a Java 17 prototype with a URL-shortening API and a governed SDLC workflow. The workflow takes a requirement and a repository path, uses an OpenAI-compatible model to produce a requirement interpretation, impact analysis, design, task plan, and concrete code proposal. A human must approve the plan before the proposal is applied to a separate working copy. The workflow runs the repository’s supported tests and allows up to two repair attempts based on actual failures. After a passing run, a second approval marks the result ready for review. The original source repository remains unchanged, and the prototype does not commit, push, deploy, or promote a release.
 
 ## How the workflow runs
 
@@ -28,7 +28,7 @@ The workflow records stage outputs, validation results, and audit events under t
 
 ## Important design decisions
 
-- **Read-only source boundary:** Planning reads the target repository and stores its artifacts separately. After plan approval, changes are applied only to a copied working directory. â€œRead-onlyâ€ refers to the supplied source repository; the workflow does write proposal and audit artifacts outside it.
+- **Read-only source boundary:** Planning reads the target repository and stores its artifacts separately. After plan approval, changes are applied only to a copied working directory. “Read-only” refers to the supplied source repository; the workflow does write proposal and audit artifacts outside it.
 - **Two human gates:** One approval allows sandbox application. A second approval, after reviewing the diff and test evidence, changes the status to `READY_FOR_REVIEW`.
 - **Parallel analysis:** Requirement interpretation happens first. Code impact analysis and architecture design run in parallel, then feed task planning and the implementation proposal.
 - **Evidence-based validation:** The workflow records the test command, exit code, duration, output, and repair history. It allows one initial validation plus at most two repair attempts.
@@ -39,7 +39,7 @@ The workflow records stage outputs, validation results, and audit events under t
 
 Requirements: JDK 17 or later. Git is used to generate diffs. Maven or Gradle is optional and only needed when a target repository uses it for tests.
 
-Run the projectâ€™s compile and smoke checks:
+Run the project’s compile and smoke checks:
 
 ~~~bash
 bash scripts/test.sh
@@ -99,7 +99,7 @@ bash scripts/run.sh workflow plan \
 
 The command prints a run ID and stores the proposal, stage records, and audit log under `~/.agentic-url-shortener/runs/<run-id>`. Review `proposal.md`, `proposal-diff.patch`, the risks, and the test plan before approving.
 
-Apply the approved proposal to the runâ€™s working copy and validate it:
+Apply the approved proposal to the run’s working copy and validate it:
 
 ~~~bash
 bash scripts/run.sh workflow apply --run <run-id> --approve-plan
@@ -133,7 +133,7 @@ The sandbox is a filesystem copy, not OS or container isolation. Repository buil
 
 ## Project documentation
 
-- [`docs/architecture.md`](docs/architecture.md) â€” components, workflow control flow, and interview trade-offs
-- [`docs/threat-model.md`](docs/threat-model.md) â€” protections and residual risks
-- [`docs/scenarios/`](docs/scenarios/) â€” greenfield, brownfield, and ambiguous-input walkthroughs
-- [`docs/reference-comparison.md`](docs/reference-comparison.md) â€” high-level design references
+- [`docs/architecture.md`](docs/architecture.md) — components, workflow control flow, and interview trade-offs
+- [`docs/threat-model.md`](docs/threat-model.md) — protections and residual risks
+- [`docs/scenarios/`](docs/scenarios/) — greenfield, brownfield, and ambiguous-input walkthroughs
+- [`docs/reference-comparison.md`](docs/reference-comparison.md) — high-level design references
