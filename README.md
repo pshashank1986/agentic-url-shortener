@@ -1,7 +1,5 @@
 # Agentic URL Shortener (Java 17)
 
-> This ZIP is a **fresh reconstruction** from the saved hiring assignment and review checklist. It is not the recovered copy of the earlier workspace project. Review the code and run `scripts/test.sh` before submitting it.
-
 This repository contains two small, dependency-free Java 17 prototypes:
 
 1. An HTTP URL shortener with custom aliases, redirects, and click-count analytics.
