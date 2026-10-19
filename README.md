@@ -1,158 +1,139 @@
 # Agentic URL Shortener (Java 17)
 
-This repository contains two small, dependency-free Java 17 prototypes:
+This Java 17 prototype contains two intentionally separate parts:
 
-1. An HTTP URL shortener with custom aliases, redirects, and click-count analytics.
-2. An approval-gated SDLC workflow that asks an OpenAI-compatible model to interpret a requirement, analyze a repository, design and propose changes, then validate those changes in a disposable sandbox.
+1. A small HTTP URL shortener that demonstrates link creation, redirects, and click analytics.
+2. An approval-gated SDLC workflow that reads a local repository, proposes a change, and validates it in a separate working copy.
 
-The workflow never edits the supplied repository and never deploys. It creates a reviewable proposal and an isolated working copy only after explicit plan approval. A second approval marks a validated result `READY_FOR_REVIEW`; it does not publish or promote anything.
+The URL API is the sample application. The workflow is a CLI that can target a repository path supplied at runtime; it is not wired into the URL API. The workflow never edits the supplied source repository and never deploys.
 
-## Requirements and verification
+## Interview pitch
 
-- Java 17 or later JDK
-- Git for unified diff generation
-- Optional: an OpenAI-compatible chat-completions endpoint for workflow planning
-- Optional: Maven or Gradle in a target repository so the workflow can run its tests
+> I built a Java 17 prototype with a URL-shortening API and a governed SDLC workflow. The workflow takes a requirement and a repository path, uses an OpenAI-compatible model to produce a requirement interpretation, impact analysis, design, task plan, and concrete code proposal. A human must approve the plan before the proposal is applied to a separate working copy. The workflow runs the repositoryâ€™s supported tests and allows up to two repair attempts based on actual failures. After a passing run, a second approval marks the result ready for review. The original source repository remains unchanged, and the prototype does not commit, push, deploy, or promote a release.
 
-Run the dependency-free compile and regression checks:
+## How the workflow runs
 
-```bash
+~~~mermaid
+flowchart TD
+  A[Requirement and repository] --> B[Interpret requirement]
+  B --> C[Impact analysis and design in parallel]
+  C --> D[Task plan and proposed patch]
+  D --> E{Human plan approval}
+  E --> F[Apply to working copy and run tests]
+  F --> G{Human review and approval}
+  G --> H[Ready for review]
+~~~
+
+The workflow records stage outputs, validation results, and audit events under the run-artifact directory. If the requirement is unclear, the model or policy fails, or no supported test command is found, the run stops for manual review. A passing run is still a review candidate, not a production release.
+
+## Important design decisions
+
+- **Read-only source boundary:** Planning reads the target repository and stores its artifacts separately. After plan approval, changes are applied only to a copied working directory. â€œRead-onlyâ€ refers to the supplied source repository; the workflow does write proposal and audit artifacts outside it.
+- **Two human gates:** One approval allows sandbox application. A second approval, after reviewing the diff and test evidence, changes the status to `READY_FOR_REVIEW`.
+- **Parallel analysis:** Requirement interpretation happens first. Code impact analysis and architecture design run in parallel, then feed task planning and the implementation proposal.
+- **Evidence-based validation:** The workflow records the test command, exit code, duration, output, and repair history. It allows one initial validation plus at most two repair attempts.
+- **Safe stops:** Ambiguity, provider errors, unsafe paths, or missing validation evidence do not count as success.
+- **No production actions:** The CLI does not create commits, push to GitHub, deploy, or promote a release.
+
+## Quick start
+
+Requirements: JDK 17 or later. Git is used to generate diffs. Maven or Gradle is optional and only needed when a target repository uses it for tests.
+
+Run the projectâ€™s compile and smoke checks:
+
+~~~bash
 bash scripts/test.sh
-```
+~~~
 
-Build the application and start the URL service on port 8080:
+Start the URL shortener on port 8080:
 
-```bash
+~~~bash
 bash scripts/run.sh serve 8080
-```
+~~~
 
-If Maven is available, `mvn test` compiles the project. The project’s integration-style smoke tests are in `SelfTest` and are run by `scripts/test.sh` and CI.
+The service uses the JDK HTTP server and stores links in memory. Restarting the process clears links.
 
-## URL API
+## Try the URL API
 
-Create a short URL:
+Create a link with a custom alias:
 
-```bash
+~~~bash
 curl -i http://localhost:8080/api/shorten \
   -H 'Content-Type: application/json' \
   -d '{"url":"https://example.com/articles/agentic-sdlc","alias":"demo1"}'
-```
+~~~
 
-`alias` is optional. If omitted, the service generates a random Base62 code. Aliases must be 3–32 letters, digits, `_`, or `-`.
+The alias is optional. Without one, the service generates a random Base62 code.
 
-```bash
+~~~bash
 curl -i http://localhost:8080/demo1
 curl http://localhost:8080/api/analytics/demo1
 curl http://localhost:8080/health
-```
+~~~
 
-The in-memory store is intentionally for demonstration: links are lost when the process restarts. This is not a production deployment.
+The API validates absolute HTTP/HTTPS URLs, rejects duplicate aliases, redirects with HTTP 302, and tracks GET redirect counts. Its in-memory storage, lack of authentication, and lack of rate limiting make it a demonstration service, not a production deployment.
 
-## Agent backend setup
+## Configure the model provider
 
-The workflow calls an OpenAI-compatible `POST /chat/completions` endpoint. Configure the provider without putting keys in source control:
+The workflow requires an OpenAI-compatible chat-completions endpoint. Set the key and model in your shell; do not commit credentials:
 
-```bash
+~~~bash
 export AGENTIC_LLM_API_KEY='your-key'
 export AGENTIC_LLM_MODEL='your-model'
-# Optional; defaults to https://api.openai.com/v1
+# Optional. Defaults to https://api.openai.com/v1
 export AGENTIC_LLM_BASE_URL='https://api.openai.com/v1'
-```
+~~~
 
-Repository excerpts are sent to the configured model. Use only repositories and providers you are authorized to share. If provider settings are missing or a stage fails, the workflow safe-stops with `MANUAL_REVIEW_REQUIRED`; it does not fabricate success or apply a fallback template.
+Repository excerpts are sent to the configured provider. Use only repositories and providers you are authorized to share. If configuration is missing or a model stage fails, the workflow stops for manual review instead of inventing a result.
 
-## Governed workflow
+## Run the SDLC workflow
 
-Run planning first. Planning reads the supplied repository and writes artifacts under `~/.agentic-url-shortener/runs/<run-id>`; it does not change the repository.
+Plan a change against an existing repository:
 
-```bash
+~~~bash
 bash scripts/run.sh workflow plan \
   --repo /path/to/repository \
   --requirement 'Add a configurable expiration time to shortened URLs' \
   --scenario brownfield
-```
+~~~
 
-Review `proposal.md`, the stage JSON files, and `audit.jsonl`. Then explicitly approve the plan:
+The command prints a run ID and stores the proposal, stage records, and audit log under `~/.agentic-url-shortener/runs/<run-id>`. Review `proposal.md`, `proposal-diff.patch`, the risks, and the test plan before approving.
 
-```bash
+Apply the approved proposal to the runâ€™s working copy and validate it:
+
+~~~bash
 bash scripts/run.sh workflow apply --run <run-id> --approve-plan
-```
+~~~
 
-The workflow copies the repo into a run-specific sandbox, applies proposed changes there, detects and runs a supported test command, and permits at most two repair attempts. A successful validation pauses for a second review gate. Review `diff.patch`, validation logs, and `final-engineering-summary.md`, then approve the outcome:
+If validation passes, review `diff.patch`, validation logs, and `final-engineering-summary.md`. Then record the second approval:
 
-```bash
+~~~bash
 bash scripts/run.sh workflow finalize --run <run-id> --approve-release
-```
+~~~
 
-This marks the sandbox result `READY_FOR_REVIEW`. It does not create a Git commit, push to GitHub, deploy, or promote a release. Rejecting a run removes its sandbox and records a source fingerprint check:
+This marks the sandbox result `READY_FOR_REVIEW`. It does not copy changes into the supplied repository, commit, push, deploy, or promote a release. To reject a run and remove its sandbox while retaining audit evidence:
 
-```bash
+~~~bash
 bash scripts/run.sh workflow reject --run <run-id> --reason 'Risk is too high'
-```
+~~~
 
-To replan after changing a requirement, create a new plan and reference the old run. The old run and audit remain, while its approvals are invalidated:
+For clarification, greenfield, and brownfield walkthroughs, see [`docs/scenarios/`](docs/scenarios/). For the 15-item assessment evidence map, see [`docs/assessment-coverage.md`](docs/assessment-coverage.md).
 
-```bash
-bash scripts/run.sh workflow plan --repo /path/to/repository \
-  --requirement 'Updated requirement...' --supersedes <old-run-id>
-```
+## Architecture at a glance
 
-View measured execution metrics:
-
-```bash
-bash scripts/run.sh workflow metrics
-```
-
-## Architecture
-
-```mermaid
-flowchart TD
-  A[Requirement interpretation] --> B[Impact analysis]
-  A --> C[Architecture design]
-  B --> D[Task plan and proposed change]
-  C --> D
-  D --> E{Human plan approval}
-  E --> F[Sandbox apply and test]
-  F -->|failure| G[Bounded repair]
-  G --> F
-  F -->|pass| H{Human release approval}
-  H --> I[Ready for review]
-```
-
-The workflow runs repository impact analysis and architecture design in parallel after requirement interpretation. Their outputs feed task planning and implementation. Each stage stores its input hash, output artifact reference, and completion event. Validation runs produce exit codes, durations, command names, and bounded output logs. Metrics are calculated from persisted run records, not hard-coded demo values.
-
-## Safety boundaries and trade-offs
-
-- **Read-only source boundary:** repository inspection and planning are read-only. Approved changes are applied only to a copy under the run artifact directory. A fingerprint check blocks stale plans and verifies the source stayed unchanged.
-- **Human control:** plan approval is required before sandbox application; release approval is required after validation. A changed source fingerprint invalidates old approvals.
-- **Path policy:** rejects absolute paths, traversal, symlinks, secrets/key files, Git metadata, and workflow credential files. Changes have file-count and size limits.
-- **Failure handling:** missing/failed model calls stop for manual review. Tests are bounded by a timeout. Failed validation enters a repair loop with a maximum of two repairs, then removes the sandbox and records rollback evidence.
-- **Ambiguity:** the `ambiguous` scenario pauses for clarification rather than guessing.
-- **No production autonomy:** this prototype does not commit, push, deploy, or promote. It is not a hardened OS-level sandbox: build scripts from the reviewed repository run as the current user with a reduced environment. Use a disposable container/VM before running untrusted repositories.
-- **Service storage:** URL records and analytics are in-memory; persistence, distributed uniqueness, rate limiting, auth, and production analytics are out of scope.
-
-## Scenario walkthroughs
-
-See [`docs/scenarios/`](docs/scenarios/) for greenfield, brownfield, and ambiguous-input run recipes. A real provider-backed run is required to create live evidence. The checked-in examples describe the expected artifact trail; they do not claim that those runs have already executed.
-
-## Assessment checklist mapping
-
-| Review item | Implementation evidence |
+| Area | Implementation |
 |---|---|
-| 1. Actual engineering changes | LLM returns file contents/deletions; explicit apply creates a sandbox diff |
-| 2. Context-sensitive reasoning | Configurable model provider receives each requirement, repository evidence, and previous-stage outputs |
-| 3. Brownfield reasoning | Bounded repository inventory, file excerpts, Git status, impact stage |
-| 4. Validation gates | Supported build command, exit code, output, duration; no pass without execution |
-| 5. Failure-driven repair | Failed output feeds a repair stage; at most two repair attempts |
-| 6. Rollback | Sandbox cleanup plus before/after source fingerprint evidence |
-| 7. Greenfield | Run on an empty starter directory; generated files appear only in sandbox |
-| 8. Brownfield | Run on a known repository; source stays unchanged while sandbox contains the patch |
-| 9. Decision lineage | Per-stage input hash, output artifact, audit event, validation/repair record |
-| 10. Effective approvals | Explicit plan-approval and release-approval CLI gates |
-| 11. Dynamic replanning | New run with `--supersedes`; old approval is invalidated and prior evidence retained |
-| 12. Meaningful fallback | Provider failure stops for manual review; no unvalidated result becomes success |
-| 13. Final documentation | Provider generates a summary from final changed source and actual test evidence |
-| 14. Three scenarios | Scenario recipes cover greenfield, brownfield, and clarification stop |
-| 15. Execution-derived metrics | `workflow metrics` reads persisted runs and measured validation/repair/rollback events |
+| URL API | `UrlShortenerServer`: JDK HTTP server for health, creation, redirect, and analytics |
+| Workflow orchestration | `WorkflowCli`: CLI state machine for planning, approvals, sandbox validation, repair, and review |
+| Model provider | `AgentBackend`: OpenAI-compatible chat-completions client configured through environment variables |
+| Repository controls | `RepositorySupport`: bounded inventory, source fingerprinting, path validation, sandbox copy, diff, and test runner |
+| Run evidence | Local run records and append-only JSONL audit events under the user's home directory |
 
-Some checklist items require a live, reviewer-observable provider run (especially contextual code generation and scenario evidence). The docs distinguish runnable behavior from expected outcomes; do not present sample recipes as completed executions.
+The sandbox is a filesystem copy, not OS or container isolation. Repository build scripts execute as the current user, with a reduced environment, and may still access the network or other local resources. Use a disposable container or VM for untrusted repositories. See [`docs/threat-model.md`](docs/threat-model.md) for details.
+
+## Project documentation
+
+- [`docs/architecture.md`](docs/architecture.md) â€” components, workflow control flow, and interview trade-offs
+- [`docs/threat-model.md`](docs/threat-model.md) â€” protections and residual risks
+- [`docs/scenarios/`](docs/scenarios/) â€” greenfield, brownfield, and ambiguous-input walkthroughs
+- [`docs/reference-comparison.md`](docs/reference-comparison.md) â€” high-level design references
