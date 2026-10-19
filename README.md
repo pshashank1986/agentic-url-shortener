@@ -7,10 +7,6 @@ This Java 17 prototype contains two intentionally separate parts:
 
 The URL API is the sample application. The workflow is a CLI that can target a repository path supplied at runtime; it is not wired into the URL API. The workflow never edits the supplied source repository and never deploys.
 
-## Interview pitch
-
-> I built a Java 17 prototype with a URL-shortening API and a governed SDLC workflow. The workflow takes a requirement and a repository path, uses an OpenAI-compatible model to produce a requirement interpretation, impact analysis, design, task plan, and concrete code proposal. A human must approve the plan before the proposal is applied to a separate working copy. The workflow runs the repository’s supported tests and allows up to two repair attempts based on actual failures. After a passing run, a second approval marks the result ready for review. The original source repository remains unchanged, and the prototype does not commit, push, deploy, or promote a release.
-
 ## How the workflow runs
 
 ~~~mermaid
